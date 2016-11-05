@@ -26,7 +26,7 @@ class LaminarFlow:
             serDelta = 0
             # trypDelta = 0
             for j in range(5):
-                serDelta += serMBetaList[j+5]*np.exp(serMBetaList[j]**2*self.serGraetz) #Beta * 5 first in file, then M * 5
+                serDelta += serMBetaList[j+5]*np.exp(-1*serMBetaList[j]**2*self.serGraetz) #Beta * 5 first in file, then M * 5
                 # trypDelta += trypMBetaList[j+5]*np.exp(trypMBetaList[j]**2*self.trypGraetz)
             self.serConcentration[i+1] = self.serConcentration[i]*serDelta
             # self.trypConcentration[i+1] = self.trypConcentration[i]*serDelta
