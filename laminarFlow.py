@@ -20,7 +20,7 @@ class LaminarFlow:
         self.calculateConcentration()
 
     def calculateConcentration(self):
-        serMBetaList = interpolateForValue(self.effSerPermeability, self.MBeta)
+        self.serMBetaList = serMBetaList = interpolateForValue(self.effSerPermeability, self.MBeta)
         # trypMBetaList = interpolateForValue(self.effTrypPermeability, self.MBeta)
         for i in range(len(self.serConcentration)-1):
             serDelta = 0
@@ -32,12 +32,13 @@ class LaminarFlow:
             # self.trypConcentration[i+1] = self.trypConcentration[i]*serDelta
 
 def interpolateForValue(value, array):
-    fromarray = array[0,:]
+    fromarray = array[:,0]
+    print(fromarray)
     for i in range(len(fromarray)):
         if value < fromarray[i]:
             break
     interp = []
     for n in range(10):
-        toarray = array[n+1,:]
+        toarray = array[:, n+1]
         interp.append(toarray[i]+((toarray[i]-toarray[i-1])/(fromarray[i]-fromarray[i-1]))*(value - fromarray[i]))
     return interp
