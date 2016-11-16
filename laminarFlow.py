@@ -14,7 +14,7 @@ class LaminarFlow:
         # self.trypConcentration = np.zeros(n)
         # self.trypConcentration[0] = trypConcentration
         self.effSerPermeability = effSerPermeability
-        # with open(M_Beta_file, 'r') as myfile:
+        # self.effTrypPermeability = effTrypPermeability
         self.MBeta = np.genfromtxt(M_Beta_file, delimiter = ',', skip_header = 1)
 
         self.calculateConcentration()
