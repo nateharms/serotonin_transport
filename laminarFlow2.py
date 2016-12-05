@@ -76,4 +76,53 @@ class LaminarFlow:
 
 
     def getConcentration(self):
-        self.hello = 'hello'
+        """
+        A method designed to determine the bluk concentration in the intestines as it passes through the intestines.
+
+        Outputs:
+        ------------------------------------------------------------------------------------
+        lengths: a list of length n that has the legnths at which the Graetz numbers were calculated at
+        serGraetz: a list of Graetz numbers for ser (length n)
+        trypGraetz: a list of Graetz numbers for tryp (length n)
+        """
+        self.serMBetaList = serMBetaList = interpolateForValue(self.serEffPerm, self.MBeta)
+        self.trypMBetaList = trypMBetaList = interpolateForValue(self.trypEffPerm, self.MBeta)
+        for i in range(len(self.serConcentration)-1):
+
+            # The initialize delta ser and tryp
+            serDelta = 0
+            trypDelta = 0
+
+            # Calculation of delta ser and tryp over the first five terms of the series.
+            for j in range(5):
+                serDelta += serMBetaList[j+5]*np.exp(-1*serMBetaList[j]**2*self.serGraetz[i]) #Beta * 5 first in file, then M * 5
+                trypDelta += trypMBetaList[j+5]*np.exp(trypMBetaList[j]**2*self.trypGraetz[i])
+
+            # Adding the concetration calculation to the list
+            self.serConcentration[i+1] = self.serConcentration[i] * serDelta
+            self.trypConcentration[i+1] = self.trypConcentration[i] * trypDelta
+
+def interpolateForValue(value, array):
+    """
+    Interpolation function designed to determine the M values for specific Graetz values
+
+    Inputs:
+    ------------------------------------------------------------------------------------
+    value:
+    array:
+
+    Outputs:
+    ------------------------------------------------------------------------------------
+    interp: the interpreted variable
+    """
+
+    fromarray = array[:,0]
+    print(fromarray)
+    for i in range(len(fromarray)):
+        if value < fromarray[i]:
+            break
+    interp = []
+    for n in range(10):
+        toarray = array[:, n+1]
+        interp.append(toarray[i]+((toarray[i]-toarray[i-1])/(fromarray[i]-fromarray[i-1]))*(value - fromarray[i]))
+    return interp
