@@ -106,7 +106,6 @@ def interpolateForValue(value, array):
     """
 
     fromarray = array[:,0]
-    print(fromarray)
     for i in range(len(fromarray)):
         if value < fromarray[i]:
             break
