@@ -15,4 +15,4 @@ def multistep(c, vmax1, Km1, K1, vmax2, Km2, K2):
     dcSer = k2fwd*c5HTP - k2rev*cSer
 
     dc5HTP = -dcTry - dcSer
-    return (dcTrydt, dc5HTPdt, dcSerdt)
+    return dcTry, dc5HTP, dcSer

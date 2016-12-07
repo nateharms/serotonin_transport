@@ -3,6 +3,9 @@ from reactionKinetics import multistep
 
 
 class LaminarFlow:
+    '''
+    Model for laminar flow through intestines, including reactions
+    '''
     def __init__(self, length, radius, max_velocity, serConditions, trypConditions, kinetics, n, M_Beta_file = 'valuesBetaM.csv'):
         """
         Initializes the variables to run begin running the simulation: Maybe we make this general so we can use the same class
@@ -13,10 +16,10 @@ class LaminarFlow:
         ------------------------------------------------------------------------------------
         length: the length of the intestines (m)
         radius: the radius of the intestines (m)
-        max_velocity: velocity of the media
-        serConditions: type: NamedTuple, with ('Concentration', 'Diffusivity', 'Wall Permeability')
-        trypConcentration: type: NamedTuple, with ('Concentration', 'Diffusivity', 'Wall Permeability')
-        kinetics: (vmax1, Km1, K1, vmax2, Km2, K2) as variables for Michaelis Menten
+        max_velocity: velocity of the media (m/s)
+        serConditions: type: NamedTuple, with ('Concentration' (mM), 'Diffusivity', 'Wall Permeability')
+        trypConcentration: type: NamedTuple, with ('Concentration' (mM), 'Diffusivity', 'Wall Permeability')
+        kinetics: (vmax1, Km1, K1, vmax2, Km2, K2) as variables for Michaelis Menten, hrs, mM
         n: the number of sub-intervals of intestines looked at (unitless)
         M_Beta_file: the file that contains the M_Beta values needed for calculations
         """
@@ -24,7 +27,7 @@ class LaminarFlow:
         # Dimentions of the intestines
         self.length = length
         self.max_velocity = max_velocity
-        self.dt = (length/max_velocity)/n
+        self.dt = (length/max_velocity/3600)/n # to get hours
         self.radius = radius
         self.kinetics = kinetics
         # The initial concentrations for both of the tryp an ser.
@@ -34,7 +37,7 @@ class LaminarFlow:
         self.trypConcentration = np.zeros(n)
         self.trypConcentration[0] = trypConditions.Concentration
 
-        self.5HTPConcentration = np.zeros(n)
+        self.HTPConcentration = np.zeros(n)
 
         # The diffusivities, wall permabilities, and effective permabilities for ser and tryp.
         self.serDiffusivity = serConditions.Diffusivity #6.2424e-8 m^2/sec
@@ -95,13 +98,17 @@ class LaminarFlow:
                 trypDelta += trypMBetaList[j+5]*np.exp(-1*trypMBetaList[j]**2*self.trypGraetz[i])
 
             #REACTTTTTT
-            c = (self.serConcentration, self.5HTPConcentration, self.trypConcentration)
-            serRate, 5HTPRate, trypRate = multistep(c, *kinetics)
+            c = (self.serConcentration[i], self.HTPConcentration[i], self.trypConcentration[i])
+            serRate, HTPRate, trypRate = multistep(c, *self.kinetics)
 
             # Adding the concentration calculation to the list
-            self.5HTPConcentration[i+1] = self.5HTPConcentration[i] + 5HTPRate*self.dt
-            self.serConcentration[i+1] = self.serConcentration[i] * serDelta + serRate*self.dt
-            self.trypConcentration[i+1] = self.trypConcentration[i] *  + trypRate*self.dt
+            self.HTPConcentration[i+1] = self.HTPConcentration[i] + HTPRate*self.dt
+
+            self.serConcentration[i+1] = self.serConcentration[i] * serDelta
+            self.serConcentration[i+1] += serRate*self.dt
+
+            self.trypConcentration[i+1] = self.trypConcentration[i] * trypDelta
+            self.trypConcentration[i+1] += trypRate*self.dt
 
 def interpolateForValue(value, array):
     """
