@@ -6,7 +6,7 @@ class LaminarFlow:
     '''
     Model for laminar flow through intestines, including reactions
     '''
-    def __init__(self, length, radius, max_velocity, serConditions, trypConditions, kinetics, wallKinetics, rings, sections, time): #M_Beta_file = 'valuesBetaM.csv'):
+    def __init__(self, length, radius, max_velocity, serConditions, trypConditions, kinetics, wallKinetics, rings, sections, timestep): #M_Beta_file = 'valuesBetaM.csv'):
         """
         Initializes the variables to run begin running the simulation: Maybe we make this general so we can use the same class
         to run Serotonin and Tryptophan. Haven't really decided yet. Different compounds would change our Graetz number as well.
@@ -24,7 +24,7 @@ class LaminarFlow:
         wallKinetics: (vmax1, Km1, K1, vmax2, Km2, K2) as variables for Michaelis Menten, hrs, mM at the wall
         rings: the number of ring partitions of intestines looked at (number of rings)
         sections: the number of sub-intervals of intestines looked at (number of sub-sections)
-        time: duh (sec?)
+        timestep: duh (s)
         M_Beta_file: the file that contains the M_Beta values needed for calculations
         """
 
@@ -34,8 +34,11 @@ class LaminarFlow:
         self.max_velocity = max_velocity
         self.kinetics = kinetics
         self.wallKinetics = wallKinetics
-        self.time = time
-        self.dt = (length/max_velocity/3600)/sections # to get hours
+
+        residence_time = (length/max_velocity/3600)
+        self.time = np.arange(0, residence_time, timestep)
+
+        self.dt = timestep # to get hours
 
         # Subsection information
         self.rings = rings
@@ -61,16 +64,11 @@ class LaminarFlow:
         self.trypEffPerm = self.trypWallPerm * self.radius / self.trypDiffusivity
 
         self.htpDiffusivity = htpConditions.Diffusivity #4.995e-8 m^2/sec
-        # self.htpWallPerm = htpConditions.Permeability
-        # self.htpEffPerm = self.htpWallPerm * self.radius / self.htpDiffusivity
 
-        # The MBeta values
-        #self.MBeta = np.genfromtxt(M_Beta_file, delimiter = ',', skip_header = 1)
 
-        # self.getGraetz(n)
         self.getConcentration()
 
-    def getGraetz(self, n):
+    def getGraetz(self, n): #Not being used right now
         """
         This method is designed to determine the graetz number for both ser and tryp across the intestines.
         This value changes over the length of the intestines, however, not much else should.
@@ -196,11 +194,7 @@ class LaminarFlow:
             htp_rxn = np.zeros_like(trypConcentration[i,:,:])
 
             # An iteration over the number of rings. I don't like this for loop, but it was the neatest way I though of how to deal with the reaction at the wall.
-            for q in range(rings):
-                if q == 0: # Reaction on the surface
-                    try_rxn[q,:], ser_rxn[q,:], htp_rxn[q,:] = reactionKinetics.multistep(concentrationTuple[:][i,q,:], *self.wallKinetics) #Need to make a wallKinetics portion
-                else: # Reaction in the bulk
-                    try_rxn[q,:], ser_rxn[q,:], htp_rxn[q,:] = reactionKinetics.multistep(concentrationTuple[:][i,q,:], *self.kinetics)
+            try_rxn, ser_rxn, htp_rxn = reactionKinetics.multistep(concentrationTuple, *self.kinetics)
 
             #tryp_rxn, ser_rxn, htp_rxn = reactionKinetics.multistep(concentrationTuple, *self.kinetics) #trypConcentration, serConcentration, htpConcentration
 
@@ -259,14 +253,19 @@ def laplacianZ(Z,dz):
 
 def laplacianR(Z,r):
     '''Functions to calculate second derivative by r'''
-    #rArray = np.linspace(0,r,len(Z[0,:])) # what is this used for??
     dr = r / len(Z[0,:])
     Ztop = Z[0:-2,1:-1]
     Zbottom = Z[2:,1:-1]
     Zcenter = Z[1:-1,1:-1]
-    return (Ztop - 2*Zcenter + Zbottom)/(dr**2) + deltaR(Z,r)/r
+    first_der = deltaR(Z,r)
+    rArray = np.linspace(0,r,len(first_der[:,0]))
+    for i in range(len(first_der[:,0])):
+        first_der[i,:] = rArray[i]*first_der[i,:]
 
-def interpolateForValue(value, array):
+
+    return (Ztop - 2*Zcenter + Zbottom)/(dr**2) + first_der
+
+def interpolateForValue(value, array): # not being used right now
     """
     Interpolation function designed to determine the M values for specific Graetz values
 
