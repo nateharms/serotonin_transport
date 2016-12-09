@@ -6,7 +6,7 @@ class LaminarFlow:
     '''
     Model for laminar flow through intestines, including reactions
     '''
-    def __init__(self, length, radius, max_velocity, serConditions, trypConditions, kinetics, rings, sections, time #M_Beta_file = 'valuesBetaM.csv'):
+    def __init__(self, length, radius, max_velocity, serConditions, trypConditions, kinetics, wallKinetics, rings, sections, time): #M_Beta_file = 'valuesBetaM.csv'):
         """
         Initializes the variables to run begin running the simulation: Maybe we make this general so we can use the same class
         to run Serotonin and Tryptophan. Haven't really decided yet. Different compounds would change our Graetz number as well.
@@ -19,32 +19,37 @@ class LaminarFlow:
         max_velocity: velocity of the media (m/s)
         serConditions: type: NamedTuple, with ('Concentration' (mM), 'Diffusivity', 'Wall Permeability')
         trypConcentration: type: NamedTuple, with ('Concentration' (mM), 'Diffusivity', 'Wall Permeability')
-        kinetics: (vmax1, Km1, K1, vmax2, Km2, K2) as variables for Michaelis Menten, hrs, mM
+        htpConcentration: type: NamedTuple, with ('Concentration' (mM), 'Diffusivity', 'Wall Permeability')
+        kinetics: (vmax1, Km1, K1, vmax2, Km2, K2) as variables for Michaelis Menten, hrs, mM in the bulk
+        wallKinetics: (vmax1, Km1, K1, vmax2, Km2, K2) as variables for Michaelis Menten, hrs, mM at the wall
         rings: the number of ring partitions of intestines looked at (number of rings)
         sections: the number of sub-intervals of intestines looked at (number of sub-sections)
+        time: duh (sec?)
         M_Beta_file: the file that contains the M_Beta values needed for calculations
         """
 
         # Dimentions of the intestines
         self.length = length
-        self.max_velocity = max_velocity
-        self.dt = (length/max_velocity/3600)/n # to get hours
         self.radius = radius
-        self.kinetics = kinetics.kinetics
-        self.wallKinetics = kinetics.wallKinetics # help Jason
-        
+        self.max_velocity = max_velocity
+        self.kinetics = kinetics
+        self.wallKinetics = wallKinetics
+        self.time = time
+        self.dt = (length/max_velocity/3600)/sections # to get hours
+
         # Subsection information
         self.rings = rings
         self.sections = sections
-        
+
         # The initial concentrations for both of the tryp an ser.
-        self.serConcentration = np.zeros(n)
-        self.serConcentration[0] = serConditions.Concentration
+        self.serConcentration = np.zeros((time, rings, sections))
+        self.serConcentration[0,:,0] = serConditions.Concentration
 
-        self.trypConcentration = np.zeros(n)
-        self.trypConcentration[0] = trypConditions.Concentration
+        self.trypConcentration = np.zeros((time, rings, sections))
+        self.trypConcentration[0,:,0] = trypConditions.Concentration
 
-        self.HTPConcentration = np.zeros(n)
+        self.htpConcentration = np.zeros((time, rings, sections))
+        self.htpConcentration[0,:,0] = htpConditions.Concentration
 
         # The diffusivities, wall permabilities, and effective permabilities for ser and tryp.
         self.serDiffusivity = serConditions.Diffusivity #6.2424e-8 m^2/sec
@@ -54,14 +59,14 @@ class LaminarFlow:
         self.trypDiffusivity = trypConditions.Diffusivity #5.386e-8 m^2/sec
         self.trypWallPerm = trypConditions.Permeability #6.44e-4 m^2/sec
         self.trypEffPerm = self.trypWallPerm * self.radius / self.trypDiffusivity
-        
+
         self.htpDiffusivity = htpConditions.Diffusivity #4.995e-8 m^2/sec
         # self.htpWallPerm = htpConditions.Permeability
         # self.htpEffPerm = self.htpWallPerm * self.radius / self.htpDiffusivity
 
         # The MBeta values
-        self.MBeta = np.genfromtxt(M_Beta_file, delimiter = ',', skip_header = 1)
-        
+        #self.MBeta = np.genfromtxt(M_Beta_file, delimiter = ',', skip_header = 1)
+
         # self.getGraetz(n)
         self.getConcentration()
 
@@ -84,18 +89,53 @@ class LaminarFlow:
         self.lengths = lengths = np.linspace(0,self.length,n)
         self.serGraetz = self.serDiffusivity/(self.max_velocity*self.radius**2)*lengths
         self.trypGraetz = self.serGraetz*self.trypDiffusivity/self.serDiffusivity
-                 
-    def crossSecAreas(self, rings, velocity_max):
-        "gives an array of radial ring areas for a tube based on given radius and number of subsections"
-        totarea=np.zeros(rings)
-        velocityProfile=np.zeros(rings)
-        r=self.radius/rings
+
+    def crossSecAreas(self):
+        """
+        Determines the crossectional area of the rings based on given radius and number of subsections.
+
+        Inputs:
+        ------------------------------------------------------------------------------------
+        self.rings: number of radial subsections chosen (unitless)
+        self.radius: the radius of the intestines (m)
+
+        Outputs:
+        ------------------------------------------------------------------------------------
+        totalArea: an array of areas corresponding to the number of rings chosen (m^2)
+        velocityProfile: an array of velocities corresponding to radial position in the intestine (m/s)
+        """
+
+        totalArea = np.zeros(self.rings)
+        velocityProfile = np.zeros(self.rings)
+        r = self.radius/self.rings
+
         for m in range(rings):
-            totarea[m]=np.pi*(r*(m+1))**2 - np.pi*(r*(m))**2
-            velocityProfile[m] = velocity_max*(self.radius**2-(r*m)**2)    
-        return totarea, velocityProfile
+            totarea[m] = np.pi * (r * (m+1)) ** 2 - np.pi * (r * m) ** 2
+            velocityProfile[m] = velocity_max * (self.radius ** 2 - (r*m) **2 )
+
+        return totalArea, velocityProfile
 
     def getConcentration(self):
+        """
+        This method is designed to determine the graetz number for both ser and tryp across the intestines.
+        This value changes over the length of the intestines, however, not much else should.
+
+        Inputs:
+        ------------------------------------------------------------------------------------
+        self.rings: number of radial subsections chosen (unitless)
+        self.sections: number of subsections chosen in z direction (unitless)
+        self.time: duh (sec)
+        self.dt: the delta t for the system (sec?)
+        self.trypConcentration: initial concentration profile of tryp (mM)
+        self.serConcentration: initial concentration profile of ser (mM)
+        self.htpConcentration: initial concentration profile of htp (mM)
+
+        Outputs:
+        ------------------------------------------------------------------------------------
+        self.trypConcentration: final concentration profile of tryp (mM)
+        self.serConcentration: final concentration profile of ser (mM)
+        self.htpConcentration: final concentration profile of htp (mM)
+        """
         # Creating three 3-D arrays to keeps track of the following:
         # ~ Substance Concentration
         # ~ Ring number (in the r direction)
@@ -104,22 +144,27 @@ class LaminarFlow:
         # Conventions that are used throughout the script, named for convienence.
         rings = self.rings
         sections = self.sections
-        time = self.time
+        time = self.time # I am assuming this is an int
 
         # 3-D Arrays
-        trypconc = np.zeros((len(time), rings, sections))
-        serotonconc = np.zeros_like(trypconc)
-        htpconc = np.zeros_like(trypconc)
+        trypConcentration = self.trypConcentration
+        serConcentration = self.serConcentration
+        htpConcentration = self.htpConcentration
+
+        ##### We pulled this from the self so Nate commented it out #####
+        #trypConcentration = np.zeros((time, rings, sections))
+        #serConcentration = np.zeros_like(trypConcentration)
+        #htpConcentration = np.zeros_like(trypConcentration)
 
         # Adding the initial conditions to the tryp and ser arrays
-        trypconc[0,:,0] = trypConditions.concentration
-        serconc[0,:,0] = serConditions.concentration
+        #trypConcentration[0,:,0] = trypConditions.concentration
+        #serConcentration[0,:,0] = serConditions.concentration
 
         # Initializing the total amount of ser taken up.
         totalSerotoninUptake = 0
 
         # For loop to look through each time.
-        for i in range(len(time)-1):
+        for i in range(time-1):
             #--------------------------------------------------------------------------------#
             # Diffusion Calculations
 
@@ -132,7 +177,7 @@ class LaminarFlow:
             lapZArrays = []
             lapRArrays = []
 
-            concentrationTuple = (trypconc[i,:,:], serconc[i,:,:], htpconc[i,:,:])
+            concentrationTuple = (trypConcentration[i,:,:], serConcentration[i,:,:], htpConcentration[i,:,:])
             for j, Z in enumerate(concentrationtuple): #0 - tryp, 1 - ser, 2 - htp
                 delZArrays.append(deltaZ(Z, dz))
                 delRArrays.append(deltaR(Z, r))
@@ -140,24 +185,24 @@ class LaminarFlow:
                 lapRArrays.append(laplacianR(Z, r))
 
             #--------------------------------------------------------------------------------#
-            # Reaction Calculations 
+            # Reaction Calculations
 
             # Conversion of tryp via reaction.
             # This is split into two parts, the reaction in the bulk and the reaction at the intestine wall.
 
             # Initialize the reaction arrays
-            try_rxn = np.zeros_like(trypconc[i,:,:])
-            ser_rxn = np.zeros_like(trypconc[i,:,:])
-            htp_rxn = np.zeros_like(trypconc[i,:,:])
+            try_rxn = np.zeros_like(trypConcentration[i,:,:])
+            ser_rxn = np.zeros_like(trypConcentration[i,:,:])
+            htp_rxn = np.zeros_like(trypConcentration[i,:,:])
 
-
+            # An iteration over the number of rings. I don't like this for loop, but it was the neatest way I though of how to deal with the reaction at the wall.
             for q in range(rings):
                 if q == 0: # Reaction on the surface
                     try_rxn[q,:], ser_rxn[q,:], htp_rxn[q,:] = reactionKinetics.multistep(concentrationTuple[:][i,q,:], *self.wallKinetics) #Need to make a wallKinetics portion
                 else: # Reaction in the bulk
                     try_rxn[q,:], ser_rxn[q,:], htp_rxn[q,:] = reactionKinetics.multistep(concentrationTuple[:][i,q,:], *self.kinetics)
-            """
-            #tryp_rxn, ser_rxn, htp_rxn = reactionKinetics.multistep(concentrationTuple, *self.kinetics) #trypconc, serotonconc, htpconc
+
+            #tryp_rxn, ser_rxn, htp_rxn = reactionKinetics.multistep(concentrationTuple, *self.kinetics) #trypConcentration, serConcentration, htpConcentration
 
             # Rxn at the surface
             #for Z in (tryp_rxn, ser_rxn, htp_rxn):
@@ -165,12 +210,12 @@ class LaminarFlow:
 
             #for Z in concentrationTuple[0]:
             #    tryp_rxn[-1,:], ser_rxn[-1,:], htp_rxn[-1,:] = reactionKinetics.multistep(concentrationTuple)
-            """
+
             #--------------------------------------------------------------------------------#
             #Boundary Condition Layer
 
             #### I do not know what is going on here ####
-            for j, Z in enumerate(trypconc, serotonconc, htpconc): 
+            for j, Z in enumerate(trypConcentration, serConcentration, htpConcentration):
                 Z[i,0,:] = Z[i,1,:]
                 Z[i,-1,:] = 0 #insert some magical boundary condition here (wall permeability * C - rate?)
 
@@ -179,14 +224,32 @@ class LaminarFlow:
 
             # Adding up where all of the substances are being consumed
             # diffusion + reaction + convection
-            trypconc[i+1,:,:] = self.trypDiffusivity * (lapZArrays[0] + lapRArrays[0]) + tryp_rxn * crossSecAreas(rings, velocity_max)[0] + crossSecAreas(rings, velocity_max)[1] * (delZArrays[0] + delRArrays[0]) 
-            serconc[i+1,:,:]  = self.serDiffusivity  * (lapZArrays[1] + lapRArrays[1]) + ser_rxn  * crossSecAreas(rings, velocity_max)[0] + crossSecAreas(rings, velocity_max)[1] * (delZArrays[1] + delRArrays[1]) 
-            htpconc[i+1,:,:]  = self.htpDiffusivity  * (lapZArrays[2] + lapRArrays[2]) + htp_rxn  * crossSecAreas(rings, velocity_max)[0] + crossSecAreas(rings, velocity_max)[1] * (delZArrays[2] + delRArrays[2]) 
+            trypConcentration[i+1,:,:] = self.trypDiffusivity * (lapZArrays[0] + lapRArrays[0]) + tryp_rxn * crossSecAreas(rings, self.max_velocity)[0] + crossSecAreas(rings, self.max_velocity)[1] * (delZArrays[0] + delRArrays[0])
+            serConcentration[i+1,:,:]  = self.serDiffusivity  * (lapZArrays[1] + lapRArrays[1]) + ser_rxn  * crossSecAreas(rings, self.max_velocity)[0] + crossSecAreas(rings, self.max_velocity)[1] * (delZArrays[1] + delRArrays[1])
+            htpConcentration[i+1,:,:]  = self.htpDiffusivity  * (lapZArrays[2] + lapRArrays[2]) + htp_rxn  * crossSecAreas(rings, self.max_velocity)[0] + crossSecAreas(rings, self.max_velocity)[1] * (delZArrays[2] + delRArrays[2])
+
+        # Assigning the final concentration arrays to self.
+        self.trypConcentration = trypConcentration
+        self.serConcentration = serConcentration
+        self.htpConcentration = htpConcentration
 
 
 
 # Functions to calculate the Laplacian and deravities in r and z directions given our input matrix.
 # Can be placed at the end of the script.
+def deltaZ(Z,dz):
+    '''function to calculate the first derivative by z'''
+    Zleft = Z[1:-1,0:-2]
+    Zright = Z[1:-1,2:]
+    return (Zright - Zleft)/(2*dz)
+
+def deltaR(Z,r):
+    '''function to calculate the first derivative by r'''
+    Ztop = Z[1:-1,0:-2]
+    Zbottom = Z[1:-1,2:]
+    dr = r / len(Z[0,:])
+    return (Ztop - Zbottom)/(2*dr)
+
 def laplacianZ(Z,dz):
     '''function to calculate second derivative by z'''
     Zleft = Z[1:-1,0:-2]
@@ -196,27 +259,12 @@ def laplacianZ(Z,dz):
 
 def laplacianR(Z,r):
     '''Functions to calculate second derivative by r'''
-    # Nate
-    rArray = np.linspace(0,r,len(Z[0,:])) # what is this used for??
-    dr = r/len(Z[0,:])
+    #rArray = np.linspace(0,r,len(Z[0,:])) # what is this used for??
+    dr = r / len(Z[0,:])
     Ztop = Z[0:-2,1:-1]
     Zbottom = Z[2:,1:-1]
     Zcenter = Z[1:-1,1:-1]
     return (Ztop - 2*Zcenter + Zbottom)/(dr**2) + deltaR(Z,r)/r
-
-def deltaZ(Z,dz):
-    '''function to calculate the first derivate by  z'''
-    Zleft = Z[1:-1,0:-2]
-    Zright = Z[1:-1,2:]
-    return (Zright - Zleft)/(2*dz) 
-
-def deltaR(Z,r):
-    '''function to calculate the first derivate by  z'''
-    #Nate and Marissa
-    Ztop = Z[1:-1,0:-2]
-    Zbottom = Z[1:-1,2:]
-    dr = r/len(Z[0,:])
-    return (Ztop - Zbottom)/(2*dr) 
 
 def interpolateForValue(value, array):
     """
@@ -224,8 +272,8 @@ def interpolateForValue(value, array):
 
     Inputs:
     ------------------------------------------------------------------------------------
-    value:
-    array:
+    value: the value you are searching for
+    array: the array you are searhing for 'value' in
 
     Outputs:
     ------------------------------------------------------------------------------------
@@ -235,16 +283,17 @@ def interpolateForValue(value, array):
     fromarray = array[:,0]
     for i in range(len(fromarray)):
         if value < fromarray[i]:
+            print('Could not find interpolated value. Out of range.')
             break
     interp = []
     for n in range(10):
         toarray = array[:, n+1]
         interp.append(toarray[i]+((toarray[i]-toarray[i-1])/(fromarray[i]-fromarray[i-1]))*(value - fromarray[i]))
     return interp
-                 
+
 """
     def getConcentration(self):
-        
+
         A method designed to determine the bluk concentration in the intestines as it passes through the intestines.
 
         Outputs:
@@ -252,7 +301,7 @@ def interpolateForValue(value, array):
         lengths: a list of length n that has the legnths at which the Graetz numbers were calculated at
         serGraetz: a list of Graetz numbers for ser (length n)
         trypGraetz: a list of Graetz numbers for tryp (length n)
-        
+
         self.serMBetaList = serMBetaList = interpolateForValue(self.serEffPerm, self.MBeta)
         self.trypMBetaList = trypMBetaList = interpolateForValue(self.trypEffPerm, self.MBeta)
         for i in range(len(self.serConcentration)-1):
@@ -279,4 +328,3 @@ def interpolateForValue(value, array):
             self.trypConcentration[i+1] = self.trypConcentration[i] * trypDelta
             self.trypConcentration[i+1] += trypRate*self.dt
 """
-
