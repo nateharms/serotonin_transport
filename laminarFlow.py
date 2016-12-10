@@ -64,6 +64,7 @@ class LaminarFlow:
         self.trypEffPerm = self.trypWallPerm * self.radius / self.trypDiffusivity
 
         self.htpDiffusivity = htpConditions.Diffusivity #4.995e-8 m^2/sec
+        self.htpWallPerm = self.serWallPerm #estimating this as serotonin permeabiltiy - cannot find values for 5htp MLP
 
 
         self.getConcentration()
