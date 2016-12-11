@@ -39,24 +39,26 @@ class LaminarFlow:
         self.kinetics = kinetics
         self.wallKinetics = wallKinetics
 
-        residence_time = (length/max_velocity/3600)
-        self.time = np.arange(0, residence_time, timestep)
-
-        self.dt = timestep # to get hours
-
         # Subsection information
         self.rings = rings
         self.sections = sections
 
+        residence_time = (length/max_velocity/3600)
+        self.time = np.arange(0, residence_time, timestep)
+
+        self.dt = timestep # to get hours
+        self.dz = length/sections
+
+
         self.outerRingSA = np.pi*2*radius*length/sections
         # The initial concentrations for both of the tryp an ser.
-        self.serConcentration = np.zeros((time, rings, sections))
+        self.serConcentration = np.zeros((len(self.time), rings, sections))
         self.serConcentration[0,:,0] = serConditions.Concentration
 
-        self.trypConcentration = np.zeros((time, rings, sections))
+        self.trypConcentration = np.zeros((len(self.time), rings, sections))
         self.trypConcentration[0,:,0] = trypConditions.Concentration
 
-        self.htpConcentration = np.zeros((time, rings, sections))
+        self.htpConcentration = np.zeros((len(self.time), rings, sections))
         self.htpConcentration[0,:,0] = htpConditions.Concentration
 
         # The diffusivities, wall permabilities for tracked molecules
@@ -118,9 +120,9 @@ class LaminarFlow:
         velocityProfile = np.zeros(self.rings)
         r = self.radius/self.rings
 
-        for m in range(rings):
-            totarea[m] = np.pi * (r * (m+1)) ** 2 - np.pi * (r * m) ** 2
-            velocityProfile[m] = velocity_max * (self.radius ** 2 - (r*m) **2 )
+        for m in range(self.rings):
+            totalArea[m] = np.pi * (r * (m+1)) ** 2 - np.pi * (r * m) ** 2
+            velocityProfile[m] = self.max_velocity * (self.radius ** 2 - (r*m) **2 )
 
         return totalArea, velocityProfile
 
@@ -155,6 +157,8 @@ class LaminarFlow:
         sections = self.sections
         time = self.time # I am assuming this is an int
 
+        area, velocityProf = self.crossSecAreas()
+
         # 3-D Arrays
         trypConcentration = self.trypConcentration
         serConcentration = self.serConcentration
@@ -171,7 +175,7 @@ class LaminarFlow:
 
         # Initializing the total amount of ser taken up.
         # For loop to look through each time.
-        for i in range(time-1):
+        for i in range(len(time)-1):
             #--------------------------------------------------------------------------------#
             # Diffusion Calculations
 
@@ -184,12 +188,12 @@ class LaminarFlow:
             lapZArrays = []
             lapRArrays = []
 
-            concentrationTuple = (trypConcentration[i,:,:], serConcentration[i,:,:], htpConcentration[i,:,:])
-            for j, Z in enumerate(concentrationtuple): #0 - tryp, 1 - ser, 2 - htp
-                delZArrays.append(deltaZ(Z, dz))
-                delRArrays.append(deltaR(Z, r))
-                lapZArrays.append(laplacianZ(Z, dz))
-                lapRArrays.append(laplacianR(Z, r))
+            concentrationList = [trypConcentration[i,:,:], serConcentration[i,:,:], htpConcentration[i,:,:]]
+            for j, Z in enumerate(concentrationList): #0 - tryp, 1 - ser, 2 - htp
+                delZArrays.append(deltaZ(Z, self.dz))
+                delRArrays.append(deltaR(Z, self.radius))
+                lapZArrays.append(laplacianZ(Z, self.dz))
+                lapRArrays.append(laplacianR(Z, self.radius))
 
             #--------------------------------------------------------------------------------#
             # Reaction Calculations
@@ -202,8 +206,9 @@ class LaminarFlow:
             ser_rxn = np.zeros_like(trypConcentration[i,:,:])
             htp_rxn = np.zeros_like(trypConcentration[i,:,:])
 
+            concentrationTuple = (trypConcentration[i,:,:], serConcentration[i,:,:], htpConcentration[i,:,:])
             # An iteration over the number of rings. I don't like this for loop, but it was the neatest way I though of how to deal with the reaction at the wall.
-            try_rxn, ser_rxn, htp_rxn = reactionKinetics.multistep(concentrationTuple, *self.kinetics)
+            try_rxn, htp_rxn, ser_rxn = multistep(concentrationTuple, *self.kinetics)
 
             #tryp_rxn, ser_rxn, htp_rxn = reactionKinetics.multistep(concentrationTuple, *self.kinetics) #trypConcentration, serConcentration, htpConcentration
 
@@ -218,18 +223,11 @@ class LaminarFlow:
             #Boundary Condition Layer
 
             #### I do not know what is going on here ####
-            wallConcentrationTuple = (trypConcentrationZ[i,-1,:], serConcentrationZ[i,-1,:], htpConcentrationZ[i,-1,:])
-            try_wallRxn, ser_rxn, htp_rxn = reactionKinetics.multistep(wallConcentrationTuple, *self.kinetics)
+            wallConcentrationTuple = (trypConcentration[i,-1,:], serConcentration[i,-1,:], htpConcentration[i,-1,:])
+            try_wallRxn, htp_wallRxn, ser_wallRxn = multistep(wallConcentrationTuple, *self.wallKinetics)
 
-            wallDelta = [try_wallRxn, ser_rxn, htp_rxn]
+            wallDelta = [try_wallRxn, htp_wallRxn, ser_wallRxn]
 
-            for j, Z in enumerate(trypConcentration, serConcentration, htpConcentration):
-                Z[i,0,:] = Z[i,1,:]
-                dcdr = self.permeabilities[j]/self.diffusivities[j](Z[i,-1,:]+wallDelta[j]*self.dt)
-                Z[i,-1,:] = Z[i,-2,:]-dcdr*self.radius/rings
-                if j == 1: #idk if this will work
-                    #Calculate the total flux through the thingamajig
-                    self.serotoninUptake += np.sum(dcdr*self.outerRingSA)
 
 
             #--------------------------------------------------------------------------------#
@@ -237,9 +235,23 @@ class LaminarFlow:
 
             # Adding up where all of the substances are being consumed
             # diffusion + reaction + convection
-            trypConcentration[i+1,:,:] = self.trypDiffusivity * (lapZArrays[0] + lapRArrays[0]) + tryp_rxn * crossSecAreas(rings, self.max_velocity)[0] + crossSecAreas(rings, self.max_velocity)[1] * (delZArrays[0] + delRArrays[0])
-            serConcentration[i+1,:,:]  = self.serDiffusivity  * (lapZArrays[1] + lapRArrays[1]) + ser_rxn  * crossSecAreas(rings, self.max_velocity)[0] + crossSecAreas(rings, self.max_velocity)[1] * (delZArrays[1] + delRArrays[1])
-            htpConcentration[i+1,:,:]  = self.htpDiffusivity  * (lapZArrays[2] + lapRArrays[2]) + htp_rxn  * crossSecAreas(rings, self.max_velocity)[0] + crossSecAreas(rings, self.max_velocity)[1] * (delZArrays[2] + delRArrays[2])
+            # + try_rxn[1:-2,1:-2]
+
+            trypConcentration[i+1,1:-2,1:-2] = trypConcentration[i,1:-2,1:-2]+(self.trypDiffusivity * (lapZArrays[0] + lapRArrays[0])  + velocityProf[1:-2] * (delZArrays[0]))*self.dt
+            serConcentration[i+1,1:-2,1:-2]  = serConcentration[i,1:-2,1:-2]+(self.serDiffusivity  * (lapZArrays[2] + lapRArrays[2]) + ser_rxn[1:-2,1:-2]  + velocityProf[1:-2] * (delZArrays[2]))*self.dt
+            htpConcentration[i+1,1:-2,1:-2]  = htpConcentration[i,1:-2,1:-2]+(self.htpDiffusivity  * (lapZArrays[1] + lapRArrays[1]) + htp_rxn[1:-2,1:-2]  + velocityProf[1:-2] * (delZArrays[1]))*self.dt
+
+
+            for j, Z in enumerate([trypConcentration, htpConcentration, serConcentration]):
+                #whatever the name of the boundary condition where the derivative is equal to 0
+                Z[i+1,0,:] = Z[i+1,1,:]
+                Z[i+1,:,0] = Z[i+1,:,1]
+                Z[i+1,:,-1] = Z[i+1,:,-2]
+                dcdr = self.permeabilities[j]/self.diffusivities[j]*(Z[i,-1,:]+wallDelta[j]*self.dt)
+                Z[i+1,-1,:] = Z[i+1,-2,:]-dcdr*self.radius/rings
+                if j == 1: #idk if this will work
+                    #Calculate the total flux through the thingamajig
+                    self.serotoninUptake += np.sum(dcdr*self.outerRingSA)
 
         # Assigning the final concentration arrays to self.
         self.trypConcentration = trypConcentration
@@ -252,8 +264,8 @@ class LaminarFlow:
 # Can be placed at the end of the script.
 def deltaZ(Z,dz):
     '''function to calculate the first derivative by z'''
-    Zleft = Z[1:-1,0:-2]
-    Zright = Z[1:-1,2:]
+    Zleft = Z[1:-2,0:-2]
+    Zright = Z[1:-2,2:]
     return (Zright - Zleft)/(2*dz)
 
 def deltaR(Z,r):
