@@ -6,7 +6,7 @@ class LaminarFlow:
     '''
     Model for laminar flow through intestines, including reactions
     '''
-    def __init__(self, length, radius, max_velocity, serConditions, trypConditions, htpConditions,
+    def __init__(self, length, radius, max_velocity, trypConditions, serConditions, htpConditions,
                     kinetics, wallKinetics, rings, sections, timestep): #M_Beta_file = 'valuesBetaM.csv'):
         """
         Initializes the variables to run begin running the simulation: Maybe we make this general so we can use the same class
@@ -55,18 +55,23 @@ class LaminarFlow:
         self.htpConcentration = np.zeros((time, rings, sections))
         self.htpConcentration[0,:,0] = htpConditions.Concentration
 
-        # The diffusivities, wall permabilities, and effective permabilities for ser and tryp.
+        # The diffusivities, wall permabilities for tracked molecules
+        # Effective permeability is no longer being used
         self.serDiffusivity = serConditions.Diffusivity #6.2424e-8 m^2/sec
         self.serWallPerm = serConditions.Permeability #7.576e-13 m^2/sec
-        self.serEffPerm = self.serWallPerm * self.radius / self.serDiffusivity
+        #self.serEffPerm = self.serWallPerm * self.radius / self.serDiffusivity
 
         self.trypDiffusivity = trypConditions.Diffusivity #5.386e-8 m^2/sec
         self.trypWallPerm = trypConditions.Permeability #6.44e-4 m^2/sec
-        self.trypEffPerm = self.trypWallPerm * self.radius / self.trypDiffusivity
+        #self.trypEffPerm = self.trypWallPerm * self.radius / self.trypDiffusivity
 
         self.htpDiffusivity = htpConditions.Diffusivity #4.995e-8 m^2/sec
-        self.htpWallPerm = self.serWallPerm #estimating this as serotonin permeabiltiy - cannot find values for 5htp MLP
-        self.htpEffPerm = self.serEffPerm
+        self.htpWallPerm = htpConditions.Permeability #estimating this as serotonin permeabiltiy - cannot find values for 5htp MLP
+        #self.htpEffPerm = self.serEffPerm
+
+        self.permeabilities = (self.trypWallPerm,self.htpWallPerm,self.serWallPerm)
+        self.diffusivities = (self.trypDiffusivity, self.htpDiffusivity, self.serDiffusivity)
+
 
         self.getConcentration()
 
@@ -211,9 +216,15 @@ class LaminarFlow:
             #Boundary Condition Layer
 
             #### I do not know what is going on here ####
+            wallConcentrationTuple = (trypConcentrationZ[i,-1,:], serConcentrationZ[i,-1,:], htpConcentrationZ[i,-1,:])
+            try_wallRxn, ser_rxn, htp_rxn = reactionKinetics.multistep(wallConcentrationTuple, *self.kinetics)
+
+            wallDelta = [try_wallRxn, ser_rxn, htp_rxn]
+
             for j, Z in enumerate(trypConcentration, serConcentration, htpConcentration):
                 Z[i,0,:] = Z[i,1,:]
-                Z[i,-1,:] = 0 #insert some magical boundary condition here (wall permeability * C - rate?)
+                dcdr = self.permeabilities[j]/self.diffusivities[j](Z[i,-1,:]+wallDelta[j]*self.dt)
+                Z[i,-1,:] = Z[i,-2,:]-dcdr*self.radius/rings
 
             #--------------------------------------------------------------------------------#
             # Concentration Calculations
