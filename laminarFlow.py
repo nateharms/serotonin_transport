@@ -6,7 +6,8 @@ class LaminarFlow:
     '''
     Model for laminar flow through intestines, including reactions
     '''
-    def __init__(self, length, radius, max_velocity, serConditions, trypConditions, kinetics, wallKinetics, rings, sections, timestep): #M_Beta_file = 'valuesBetaM.csv'):
+    def __init__(self, length, radius, max_velocity, serConditions, trypConditions, htpConditions,
+                    kinetics, wallKinetics, rings, sections, timestep): #M_Beta_file = 'valuesBetaM.csv'):
         """
         Initializes the variables to run begin running the simulation: Maybe we make this general so we can use the same class
         to run Serotonin and Tryptophan. Haven't really decided yet. Different compounds would change our Graetz number as well.
@@ -65,7 +66,7 @@ class LaminarFlow:
 
         self.htpDiffusivity = htpConditions.Diffusivity #4.995e-8 m^2/sec
         self.htpWallPerm = self.serWallPerm #estimating this as serotonin permeabiltiy - cannot find values for 5htp MLP
-
+        self.htpEffPerm = self.serEffPerm
 
         self.getConcentration()
 
