@@ -29,6 +29,9 @@ class LaminarFlow:
         M_Beta_file: the file that contains the M_Beta values needed for calculations
         """
 
+        #this is the main  variable we want to track
+        self.serotoninUptake = 0
+
         # Dimentions of the intestines
         self.length = length
         self.radius = radius
@@ -45,6 +48,7 @@ class LaminarFlow:
         self.rings = rings
         self.sections = sections
 
+        self.outerRingSA = np.pi*2*radius*length/sections
         # The initial concentrations for both of the tryp an ser.
         self.serConcentration = np.zeros((time, rings, sections))
         self.serConcentration[0,:,0] = serConditions.Concentration
@@ -166,8 +170,6 @@ class LaminarFlow:
         #serConcentration[0,:,0] = serConditions.concentration
 
         # Initializing the total amount of ser taken up.
-        totalSerotoninUptake = 0
-
         # For loop to look through each time.
         for i in range(time-1):
             #--------------------------------------------------------------------------------#
@@ -225,6 +227,10 @@ class LaminarFlow:
                 Z[i,0,:] = Z[i,1,:]
                 dcdr = self.permeabilities[j]/self.diffusivities[j](Z[i,-1,:]+wallDelta[j]*self.dt)
                 Z[i,-1,:] = Z[i,-2,:]-dcdr*self.radius/rings
+                if j == 1: #idk if this will work
+                    #Calculate the total flux through the thingamajig
+                    self.serotoninUptake += np.sum(dcdr*self.outerRingSA)
+
 
             #--------------------------------------------------------------------------------#
             # Concentration Calculations
