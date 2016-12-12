@@ -64,16 +64,16 @@ class LaminarFlow:
 
         # The diffusivities, wall permabilities for tracked molecules
         # Effective permeability is no longer being used
-        self.serDiffusivity = serConditions.Diffusivity #6.2424e-8 m^2/sec
-        self.serWallPerm = serConditions.Permeability #7.576e-13 m^2/sec
+        self.serDiffusivity = serConditions.Diffusivity *3600 #6.2424e-8 m^2/sec
+        self.serWallPerm = serConditions.Permeability*3600 #7.576e-13 m^2/sec
         #self.serEffPerm = self.serWallPerm * self.radius / self.serDiffusivity
 
-        self.trypDiffusivity = trypConditions.Diffusivity #5.386e-8 m^2/sec
-        self.trypWallPerm = trypConditions.Permeability #6.44e-4 m^2/sec
+        self.trypDiffusivity = trypConditions.Diffusivity*3600 #5.386e-8 m^2/sec
+        self.trypWallPerm = trypConditions.Permeability*3600 #6.44e-4 m^2/sec
         #self.trypEffPerm = self.trypWallPerm * self.radius / self.trypDiffusivity
 
-        self.htpDiffusivity = htpConditions.Diffusivity #4.995e-8 m^2/sec
-        self.htpWallPerm = htpConditions.Permeability #estimating this as serotonin permeabiltiy - cannot find values for 5htp MLP
+        self.htpDiffusivity = htpConditions.Diffusivity*3600 #4.995e-8 m^2/sec
+        self.htpWallPerm = htpConditions.Permeability *3600#estimating this as serotonin permeabiltiy - cannot find values for 5htp MLP
         #self.htpEffPerm = self.serEffPerm
 
         self.permeabilities = (self.trypWallPerm,self.htpWallPerm,self.serWallPerm)
