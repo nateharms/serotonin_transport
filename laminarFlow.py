@@ -263,11 +263,11 @@ class LaminarFlow:
                 Z[i+1,0,:] = Z[i+1,1,:]
                 Z[i+1,:,0] = Z[i+1,:,1]
                 Z[i+1,:,-1] = Z[i+1,:,-2]
-                dcdr = self.permeabilities[j]/self.diffusivities[j]*(Z[i,-1,:]+wallDelta[j]*self.dt)
-                Z[i+1,-1,:] = Z[i+1,-2,:] + dcdr*self.radius/rings
+                dcdr = self.permeabilities[j]*(Z[i,-1,:]+wallDelta[j]*self.dt)*self.dt
+                Z[i+1,-1,:] = Z[i+1,-2,:] - dcdr*self.radius/rings
                 if j == 2: #idk if this will work
-                    print(dcdr)
-                    self.serotoninUptake[i+1] += self.serotoninUptake[i]+np.sum(dcdr*self.outerRingSA)
+                    # print(dcdr)
+                    self.serotoninUptake[i+1] += self.serotoninUptake[i]+np.sum(dcdr*self.radius/rings*self.outerRingSA)
 
         # Assigning the final concentration arrays to self.
         self.trypConcentration = trypConcentration
