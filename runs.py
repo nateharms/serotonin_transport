@@ -37,9 +37,9 @@ wallKinetics = KineticsParamers(vmax1 = 0.1868167,
                             Km2 = 2.37430847,
                             K2 = 0.25340153)
 
-radius = 1./12
-length = 25
-max_velocity = 5
+radius = 2.5/100
+length = 7.5
+max_velocity = .0287/60
 timestep = .1/3600
 rings = 20
 sections = 500
