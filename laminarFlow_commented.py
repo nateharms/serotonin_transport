@@ -135,7 +135,12 @@ class LaminarFlow:
         self.serConcentration: final concentration profile of ser (mM)
         self.htpConcentration: final concentration profile of htp (mM)
         """
+        # Creating three 3-D arrays to keeps track of the following:
+        # ~ Substance Concentration
+        # ~ Ring number (in the r direction)
+        # ~ Section number (in the z direction)
 
+        # Conventions that are used throughout the script, named for convienence.
         rings = self.rings
         sections = self.sections
         time = self.time # I am assuming this is an int
@@ -147,8 +152,25 @@ class LaminarFlow:
         serConcentration = self.serConcentration
         htpConcentration = self.htpConcentration
 
+        ##### We pulled this from the self so Nate commented it out #####
+        #trypConcentration = np.zeros((time, rings, sections))
+        #serConcentration = np.zeros_like(trypConcentration)
+        #htpConcentration = np.zeros_like(trypConcentration)
+
+        # Adding the initial conditions to the tryp and ser arrays
+        #trypConcentration[0,:,0] = trypConditions.concentration
+        #serConcentration[0,:,0] = serConditions.concentration
+
+        # Initializing the total amount of ser taken up.
+        # For loop to look through each time.
         for i in range(len(time)-1):
             print('Running {} of {}'.format(i+1,len(time)-1))
+            #--------------------------------------------------------------------------------#
+            # Diffusion Calculations
+
+            # Determining the laplacians and first deravitives for each concentration curve.
+            # Laplicians are used for diffusion calculations
+            # First deravitives are used for convection calculations
 
             delZArrays = []
             delRArrays = []
@@ -163,6 +185,13 @@ class LaminarFlow:
                 # print('Length of laplacian is {}.'.format(len(lapZArrays[j])))
                 lapRArrays.append(laplacianR(Z, self.radius))
 
+            #--------------------------------------------------------------------------------#
+            # Reaction Calculations
+
+            # Conversion of tryp via reaction.
+            # This is split into two parts, the reaction in the bulk and the reaction at the intestine wall.
+
+            # Initialize the reaction arrays
             try_rxn = np.zeros_like(trypConcentration[i,:,:])
             ser_rxn = np.zeros_like(trypConcentration[i,:,:])
             htp_rxn = np.zeros_like(trypConcentration[i,:,:])
@@ -172,6 +201,19 @@ class LaminarFlow:
             try_rxn, htp_rxn, ser_rxn = multistep(concentrationTuple, *self.kinetics)
             rxnList =  [try_rxn[1:-1,1:-1], htp_rxn[1:-1,1:-1], ser_rxn[1:-1,1:-1]]
 
+            #tryp_rxn, ser_rxn, htp_rxn = reactionKinetics.multistep(concentrationTuple, *self.kinetics) #trypConcentration, serConcentration, htpConcentration
+
+            # Rxn at the surface
+            #for Z in (tryp_rxn, ser_rxn, htp_rxn):
+            #    Z[-1,:] *= 0 # Removing the existing reaction rates because they aren't correct for the surface.
+
+            #for Z in concentrationTuple[0]:
+            #    tryp_rxn[-1,:], ser_rxn[-1,:], htp_rxn[-1,:] = reactionKinetics.multistep(concentrationTuple)
+
+            #--------------------------------------------------------------------------------#
+            #Boundary Condition Layer
+
+            #### I do not know what is going on here ####
             wallConcentrationTuple = (trypConcentration[i,-1,:], htpConcentration[i,-1,:], serConcentration[i,-1,:])
             try_wallRxn, htp_wallRxn, ser_wallRxn = multistep(wallConcentrationTuple, *self.wallKinetics)
 
@@ -187,13 +229,12 @@ class LaminarFlow:
             # + try_rxn[1:-2,1:-2]
             for j, Z in enumerate([trypConcentration, htpConcentration, serConcentration]):
                 # print(len(delZArrays[j][:,0]))
-                convection = np.zeros_like(Z[i+1,1:-1,1:-1])
                 for k in range(len(velocityProf)-2):
                     # print('Length of first derivative is {} and length of velocity profile is {}.'.format(len(delZArrays[j][:,0]),len(velocityProf)))
 
                     assert len(delZArrays[j][:,0]) == len(velocityProf[1:-1])
                     # print(delZArrays[j])
-                    convection[k] = velocityProf[k+1]*delZArrays[j][k,:]
+                    convection = velocityProf[k+1]*delZArrays[j]
                 diffusion = self.diffusivities[j]*(lapZArrays[j] + lapRArrays[j])
                 Z[i+1,1:-1,1:-1] = Z[i,1:-1,1:-1] + (diffusion - convection + rxnList[j])*self.dt #
 
@@ -205,17 +246,16 @@ class LaminarFlow:
 
 
             for j, Z in enumerate([trypConcentration, htpConcentration, serConcentration]):
-                dc_thruwall = self.permeabilities[j]/self.radius*(Z[i,-1,:]) #+wallDelta[j]*self.dt
-                #add diffusion term?
-                Z[i+1,-1,1:-1] = Z[i,-1,1:-1] - (dc_thruwall[1:-1]+self.diffusivities[j]*laplacianZ(Z[i,-1,:],self.dz+wallDelta[j][1:-1]))*self.dt
-                if j == 2: #idk if this will work
-                    # print(dcdr)
-                    self.serotoninUptake[i+1] += self.serotoninUptake[i]+np.sum(dc_thruwall[1:-1]*self.radius/rings*self.outerRingSA)*self.dt
                 #whatever the name of the boundary condition where the derivative is equal to 0
                 Z[i+1,0,:] = Z[i+1,1,:]
                 Z[i+1,:,0] = Z[i+1,:,1]
                 Z[i+1,:,-1] = Z[i+1,:,-2]
-
+                dc = self.permeabilities[j]*self.radius/rings*(Z[i,-1,:])*self.dt #+wallDelta[j]*self.dt
+                #add diffusion term?
+                Z[i+1,-1,:] = Z[i+1,-2,:] - dc
+                if j == 2: #idk if this will work
+                    # print(dcdr)
+                    self.serotoninUptake[i+1] += self.serotoninUptake[i]+np.sum(dc*self.radius/rings*self.outerRingSA)
 
         # Assigning the final concentration arrays to self.
         self.trypConcentration = trypConcentration
@@ -240,15 +280,9 @@ def deltaR(Z,r):
 
 def laplacianZ(Z,dz):
     '''function to calculate second derivative by z'''
-    try:
-        Zleft = Z[1:-1,0:-2]
-        Zright = Z[1:-1,2:]
-        Zcenter = Z[1:-1,1:-1]
-    except IndexError:
-        Zleft = Z[0:-2]
-        Zright = Z[2:]
-        Zcenter = Z[1:-1]
-        # print('left:{}, right{}, center{}'.format(len(Zleft),len(Zright),len(Zcenter)))
+    Zleft = Z[1:-1,0:-2]
+    Zright = Z[1:-1,2:]
+    Zcenter = Z[1:-1,1:-1]
     return (Zleft - 2*Zcenter + Zright)/(dz**2)
 
 def laplacianR(Z,r):
@@ -261,4 +295,69 @@ def laplacianR(Z,r):
     rArray = np.linspace(0,r,len(first_der[:,0]))
     for i in range(len(first_der[:,0])):
         first_der[i,:] = first_der[i,:]/rArray[i]
+
+
     return (Ztop - 2*Zcenter + Zbottom)/(dr**2) + first_der
+
+def interpolateForValue(value, array): # not being used right now
+    """
+    Interpolation function designed to determine the M values for specific Graetz values
+
+    Inputs:
+    ------------------------------------------------------------------------------------
+    value: the value you are searching for
+    array: the array you are searhing for 'value' in
+
+    Outputs:
+    ------------------------------------------------------------------------------------
+    interp: the interpreted variable
+    """
+
+    fromarray = array[:,0]
+    for i in range(len(fromarray)):
+        if value < fromarray[i]:
+            print('Could not find interpolated value. Out of range.')
+            break
+    interp = []
+    for n in range(10):
+        toarray = array[:, n+1]
+        interp.append(toarray[i]+((toarray[i]-toarray[i-1])/(fromarray[i]-fromarray[i-1]))*(value - fromarray[i]))
+    return interp
+
+"""
+    def getConcentration(self):
+
+        A method designed to determine the bluk concentration in the intestines as it passes through the intestines.
+
+        Outputs:
+        ------------------------------------------------------------------------------------
+        lengths: a list of length n that has the legnths at which the Graetz numbers were calculated at
+        serGraetz: a list of Graetz numbers for ser (length n)
+        trypGraetz: a list of Graetz numbers for tryp (length n)
+
+        self.serMBetaList = serMBetaList = interpolateForValue(self.serEffPerm, self.MBeta)
+        self.trypMBetaList = trypMBetaList = interpolateForValue(self.trypEffPerm, self.MBeta)
+        for i in range(len(self.serConcentration)-1):
+
+            # The initialize delta ser and tryp
+            serDelta = 0
+            trypDelta = 0
+
+            # Calculation of delta ser and tryp over the first five terms of the series.
+            for j in range(5):
+                serDelta += serMBetaList[j+5]*np.exp(-1*serMBetaList[j]**2*self.serGraetz[i]) #Beta * 5 first in file, then M * 5
+                trypDelta += trypMBetaList[j+5]*np.exp(-1*trypMBetaList[j]**2*self.trypGraetz[i])
+
+            #REACTTTTTT
+            c = (self.serConcentration[i], self.HTPConcentration[i], self.trypConcentration[i])
+            serRate, HTPRate, trypRate = multistep(c, *self.kinetics)
+
+            # Adding the concentration calculation to the list
+            self.HTPConcentration[i+1] = self.HTPConcentration[i] + HTPRate*self.dt
+
+            self.serConcentration[i+1] = self.serConcentration[i] * serDelta
+            self.serConcentration[i+1] += serRate*self.dt
+
+            self.trypConcentration[i+1] = self.trypConcentration[i] * trypDelta
+            self.trypConcentration[i+1] += trypRate*self.dt
+"""
