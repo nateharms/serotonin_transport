@@ -123,7 +123,7 @@ class LaminarFlow:
 
         for m in range(self.rings):
             totalArea[m] = np.pi * (r * (m+1)) ** 2 - np.pi * (r * m) ** 2
-            velocityProfile[m] = self.max_velocity * (self.radius ** 2 - (r*m) **2 )
+            velocityProfile[m] = self.max_velocity * (1 - ((r * m) ** 2)/((self.radius) **2 ))
 
         return totalArea, velocityProfile
 
