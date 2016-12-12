@@ -7,7 +7,7 @@ class LaminarFlow:
     '''
     Model for laminar flow through intestines, including reactions
     '''
-    def __init__(self, length, radius, max_velocity, trypConditions, serConditions, htpConditions,
+    def __init__(self, length, radius, max_velocity, trypConditions, htpConditions, serConditions,
                     kinetics, wallKinetics, rings, sections, timestep): #M_Beta_file = 'valuesBetaM.csv'):
         """
         Initializes the variables to run begin running the simulation: Maybe we make this general so we can use the same class
@@ -19,19 +19,19 @@ class LaminarFlow:
         length: the length of the intestines (m)
         radius: the radius of the intestines (m)
         max_velocity: velocity of the media (m/s)
-        serConditions: type: NamedTuple, with ('Concentration' (mM), 'Diffusivity', 'Wall Permeability')
-        trypConcentration: type: NamedTuple, with ('Concentration' (mM), 'Diffusivity', 'Wall Permeability')
-        htpConcentration: type: NamedTuple, with ('Concentration' (mM), 'Diffusivity', 'Wall Permeability')
+        serConditions: type: NamedTuple, with ('Concentration' (mM), 'Diffusivity' (m^2/s), 'Wall Permeability'(m/s))
+        trypConcentration: type: NamedTuple, with ('Concentration' (mM), 'Diffusivity' (m^2/s), 'Wall Permeability'(m/s))
+        htpConcentration: type: NamedTuple, with ('Concentration' (mM), 'Diffusivity' (m^2/s), 'Wall Permeability'(m/s))
         kinetics: (vmax1, Km1, K1, vmax2, Km2, K2) as variables for Michaelis Menten, hrs, mM in the bulk
         wallKinetics: (vmax1, Km1, K1, vmax2, Km2, K2) as variables for Michaelis Menten, hrs, mM at the wall
         rings: the number of ring partitions of intestines looked at (number of rings)
         sections: the number of sub-intervals of intestines looked at (number of sub-sections)
-        timestep: duh (s)
+        timestep: duh (hr)
         M_Beta_file: the file that contains the M_Beta values needed for calculations
         """
 
         #this is the main  variable we want to track
-        self.serotoninUptake = 0
+        # self.serotoninUptake = 0
 
         # Dimentions of the intestines
         self.length = length
@@ -123,7 +123,7 @@ class LaminarFlow:
 
         for m in range(self.rings):
             totalArea[m] = np.pi * (r * (m+1)) ** 2 - np.pi * (r * m) ** 2
-            velocityProfile[m] = self.max_velocity * (1 - ((r * m) ** 2)/((self.radius) **2 ))
+            velocityProfile[m] = self.max_velocity*3600 * (1 - ((r * m) ** 2)/((self.radius) **2 ))
 
         return totalArea, velocityProfile
 
@@ -209,7 +209,7 @@ class LaminarFlow:
             ser_rxn = np.zeros_like(trypConcentration[i,:,:])
             htp_rxn = np.zeros_like(trypConcentration[i,:,:])
 
-            concentrationTuple = (trypConcentration[i,:,:], serConcentration[i,:,:], htpConcentration[i,:,:])
+            concentrationTuple = (trypConcentration[i,:,:], htpConcentration[i,:,:], serConcentration[i,:,:])
             # An iteration over the number of rings. I don't like this for loop, but it was the neatest way I though of how to deal with the reaction at the wall.
             try_rxn, htp_rxn, ser_rxn = multistep(concentrationTuple, *self.kinetics)
             rxnList =  [try_rxn[1:-1,1:-1], htp_rxn[1:-1,1:-1], ser_rxn[1:-1,1:-1]]
@@ -227,7 +227,7 @@ class LaminarFlow:
             #Boundary Condition Layer
 
             #### I do not know what is going on here ####
-            wallConcentrationTuple = (trypConcentration[i,-1,:], serConcentration[i,-1,:], htpConcentration[i,-1,:])
+            wallConcentrationTuple = (trypConcentration[i,-1,:], htpConcentration[i,-1,:], serConcentration[i,-1,:])
             try_wallRxn, htp_wallRxn, ser_wallRxn = multistep(wallConcentrationTuple, *self.wallKinetics)
 
             wallDelta = [try_wallRxn, htp_wallRxn, ser_wallRxn]
@@ -249,7 +249,7 @@ class LaminarFlow:
                     # print(delZArrays[j])
                     convection = velocityProf[k+1]*delZArrays[j]
                 diffusion = self.diffusivities[j]*(lapZArrays[j] + lapRArrays[j])
-                Z[i+1,1:-1,1:-1] = Z[i,1:-1,1:-1] + (diffusion + convection + rxnList[j])*self.dt
+                Z[i+1,1:-1,1:-1] = Z[i,1:-1,1:-1] + (diffusion - convection + rxnList[j])*self.dt #
 
 
 
@@ -263,7 +263,7 @@ class LaminarFlow:
                 Z[i+1,0,:] = Z[i+1,1,:]
                 Z[i+1,:,0] = Z[i+1,:,1]
                 Z[i+1,:,-1] = Z[i+1,:,-2]
-                dcdr = self.permeabilities[j]*(Z[i,-1,:]+wallDelta[j]*self.dt)*self.dt
+                dcdr = self.permeabilities[j]*(Z[i,-1,:])*self.dt #+wallDelta[j]*self.dt
                 Z[i+1,-1,:] = Z[i+1,-2,:] - dcdr*self.radius/rings
                 if j == 2: #idk if this will work
                     # print(dcdr)
