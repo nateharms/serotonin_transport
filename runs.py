@@ -2,7 +2,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from collections import namedtuple
 
-import laminarFlow
+import new
 
 ConditionSet = namedtuple('ConditionSet', ['Concentration', 'Diffusivity', 'Permeability'])
 KineticsParamers = namedtuple('ConditionSet', ['vmax1', 'Km1', 'K1', 'vmax2', 'Km2', 'K2'])
@@ -40,8 +40,8 @@ wallKinetics = KineticsParamers(vmax1 = 0.1868167,
 radius = 2.5/2/100
 length = 7.5
 max_velocity = .0287/60
-timestep = .1/3600
+timestep = 1/3600
 rings = 20
 sections = 500
 
-Model = laminarFlow.LaminarFlow(length, radius, max_velocity, serCondition, trypCondition, htpCondition, kinetics, wallKinetics, rings, sections, timestep)
+Model = new.LaminarFlow(length, radius, max_velocity, trypCondition, htpCondition, serCondition, kinetics, wallKinetics, rings, sections, timestep)

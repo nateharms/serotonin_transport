@@ -1,5 +1,6 @@
 import numpy as np
 from reactionKinetics import multistep
+from scipy.integrate import odeint
 
 from time import sleep
 
@@ -64,8 +65,8 @@ class LaminarFlow:
         self.permeabilities = (self.trypWallPerm,self.htpWallPerm,self.serWallPerm)
         self.diffusivities = (self.trypDiffusivity, self.htpDiffusivity, self.serDiffusivity)
 
-        Concentrations = np.zeros(3, self.rings, self.sections)
-        for i, J in enumerate(trypConditions, htpConditions, serConditions):
+        Concentrations = np.zeros((3, self.rings, self.sections))
+        for i, J in enumerate([trypConditions, htpConditions, serConditions]):
             Concentrations[i, :, 0] = J.Concentration
         initialConcentrations = Concentrations.reshape(-1)
         times = np.arange(0, length/max_velocity, 10)
@@ -76,7 +77,7 @@ class LaminarFlow:
         velocityProfile = self.max_velocity*3600*(1-np.square(r)/np.square(self.radius))
         return velocityProfile
 
-    def getConcentration(self, concentrationVector):
+    def getConcentration(self, concentrationsVector, time):
         rings = self.rings
         sections = self.sections
         velocityProf = self.velocityProfile()
@@ -84,17 +85,19 @@ class LaminarFlow:
         dz = self.length/(sections-1)
         dr = self.radius/(rings-1)
 
-        concentrations = concentrationsVector.reshape((3,N,M))
-        trypConcentration = concentrationsVector[0]
-        htpConcentration = concentrationsVector[1]
-        serConcentration = concentrationsVector[2]
+        concentrations = concentrationsVector.reshape((3,rings,sections))
+        trypConcentration = concentrations[0]
+        htpConcentration = concentrations[1]
+        serConcentration = concentrations[2]
 
         concentrationList = [trypConcentration, htpConcentration, serConcentration]
+        print(concentrationsVector)
 
-        deltaZ = np.diff(concentrationsVector, axis = 1)
-        deltaR = np.diff(concentrationsVector, axis = 2)
-        lapZ = np.diff(concentrationsVector, n = 2, axis = 1)
-        lapR = np.diff(concentrationsVector, n = 2, axis = 2)
+        lapZ = np.diff(concentrations, n = 2, axis = 1)
+        lapR = np.diff(concentrations, n = 2, axis = 2)
+
+        deltaZ = np.diff(concentrations, n = 1, axis = 1)
+        deltaR = np.diff(concentrations, n = 1, axis = 2)
 
         concentrationTuple = (trypConcentration, htpConcentration, serConcentration)
 
@@ -108,19 +111,19 @@ class LaminarFlow:
 
             # Convection!
             convection = np.zeros((rings, sections))
-            for j in range(rings):
+            for j in range(rings-1):
                 convection[j] += velocityProf[j] * deltaZ[i,j] #addition to make sure sizes are correct
             rate -= convection
 
             # Diffusion!
-            rate[i,,1:-1,:] += self.diffusivities[i]*lapR[i]/(dr*dr)
-            rate[i,:,1:-1] += self.diffusivities[i]*lapZ[i]/(dz*dz)
+            rate[1:-1,:] += self.diffusivities[i]*lapZ[i]/(dz*dz)
+            rate[:,1:-1] += self.diffusivities[i]*lapR[i]/(dr*dr)
 
             # Boundaries!
-            rate[i,-1,:] += self.permeabilities[i]*wallConcentrationTuple[i]/self.radius
-            rate[i,:,-1] += 2 * self.diffusivities[i] * (concentrations[i, :,-2] - concentrations[i, :,-1] ) / (dz*dz)
-            rate[i,0,:] += 2 * self.diffusivities[i] * (concentrations[i, 1, :] - concentrations[i, 0, :] ) / (dr*dr)
-            rate[i,:,0] += 2 * self.diffusivities[i] * (concentrations[i, :, 1] - concentrations[i, :, 0] ) / (dz*dz)
+            rate[-1,:] += self.permeabilities[i]*wallConcentrationTuple[i]/self.radius
+            rate[:,-1] += 2 * self.diffusivities[i] * (concentrations[i, :,-2] - concentrations[i, :,-1] ) / (dz*dz)
+            rate[0,:] += 2 * self.diffusivities[i] * (concentrations[i, 1, :] - concentrations[i, 0, :] ) / (dr*dr)
+            rate[:,0] += 2 * self.diffusivities[i] * (concentrations[i, :, 1] - concentrations[i, :, 0] ) / (dz*dz)
 
         rates = np.stack((tryp_rate, htp_rate, ser_rate))
 
