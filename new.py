@@ -70,7 +70,7 @@ class LaminarFlow:
             Concentrations[i, :, 0] = J.Concentration
         initialConcentrations = Concentrations.reshape(-1)
         times = np.arange(0, length/max_velocity, 10)
-        result = odeint(self.getConcentration, initialConcentrations, times)
+        self.results = odeint(self.getConcentration, initialConcentrations, times)
 
     def velocityProfile(self):
         r = np.linspace(0,self.radius,self.rings)
