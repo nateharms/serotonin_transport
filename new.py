@@ -45,12 +45,7 @@ class LaminarFlow:
         self.rings = rings
         self.sections = sections
 
-        residence_time = (length/max_velocity/3600)
-        self.time = np.arange(0, residence_time, timestep)
-        self.serotoninUptake = np.zeros_like(self.time)
-        self.dt = timestep # to get hours
-        self.dz = length/sections
-
+        # self.serotoninUptake = np.zeros_like(self.time)
 
         self.outerRingSA = np.pi*2*radius*length/sections
 
@@ -69,8 +64,14 @@ class LaminarFlow:
         for i, J in enumerate([trypConditions, htpConditions, serConditions]):
             Concentrations[i, :, 0] = J.Concentration
         initialConcentrations = Concentrations.reshape(-1)
-        times = np.arange(0, length/max_velocity, 10)
-        self.results = odeint(self.getConcentration, initialConcentrations, times)
+        self.timestep = timestep
+        self.times = np.arange(0, (length/max_velocity)/3600, timestep)
+        print('Times array is {}'.format(len(self.times)))
+
+
+        self.serotoninUptake = [0]
+        self.results, info_dict = odeint(self.getConcentration, initialConcentrations, self.times, full_output = True)
+
 
     def velocityProfile(self):
         r = np.linspace(0,self.radius,self.rings)
@@ -121,6 +122,8 @@ class LaminarFlow:
 
             # Boundaries!
             rate[-1,:] += self.permeabilities[i]*wallConcentrationTuple[i]/self.radius
+            if i == 2:
+                self.serotoninUptake.append(self.serotoninUptake[-1] + np.sum(2*self.timestep*np.pi*dz*self.radius*rate[-1,:])) #360 is based off of 10s / 3600 in time[]
             rate[:,-1] += 2 * self.diffusivities[i] * (concentrations[i, :,-2] - concentrations[i, :,-1] ) / (dz*dz)
             rate[0,:] += 2 * self.diffusivities[i] * (concentrations[i, 1, :] - concentrations[i, 0, :] ) / (dr*dr)
             rate[:,0] += 2 * self.diffusivities[i] * (concentrations[i, :, 1] - concentrations[i, :, 0] ) / (dz*dz)
