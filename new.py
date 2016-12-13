@@ -64,9 +64,10 @@ class LaminarFlow:
         self.permeabilities = (self.trypWallPerm,self.htpWallPerm,self.serWallPerm)
         self.diffusivities = (self.trypDiffusivity, self.htpDiffusivity, self.serDiffusivity)
 
-        initalConcentrations = np.zeros(3, self.rings, self.sections)
+        Concentrations = np.zeros(3, self.rings, self.sections)
         for i, J in enumerate(trypConditions, htpConditions, serConditions):
-            initialConcentrations[i, :, 0] = J.Concentration
+            Concentrations[i, :, 0] = J.Concentration
+        initialConcentrations = Concentrations.reshape(-1)
         times = np.arange(0, length/max_velocity, 10)
         result = odeint(self.getConcentration, initialConcentrations, times)
 
@@ -79,6 +80,9 @@ class LaminarFlow:
         rings = self.rings
         sections = self.sections
         velocityProf = self.velocityProfile()
+
+        dz = self.length/(sections-1)
+        dr = self.radius/(rings-1)
 
         concentrations = concentrationsVector.reshape((3,N,M))
         trypConcentration = concentrationsVector[0]
@@ -100,6 +104,24 @@ class LaminarFlow:
         try_wallRate, htp_wallRate, ser_wallRate = multistep(wallConcentrationTuple, *self.wallKinetics)
         tryp_rate[ -1 , : ], htp_rate[ -1 , : ], ser_rate[ -1 , : ] = try_wallRate, htp_wallRate, ser_wallRate
 
+        for i, rate in enumerate([tryp_rate, htp_rate, ser_rate]): #Zip would be more confusing here I think....
 
+            # Convection!
+            convection = np.zeros((rings, sections))
+            for j in range(rings):
+                convection[j] += velocityProf[j] * deltaZ[i,j] #addition to make sure sizes are correct
+            rate -= convection
+
+            # Diffusion!
+            rate[i,,1:-1,:] += self.diffusivities[i]*lapR[i]/(dr*dr)
+            rate[i,:,1:-1] += self.diffusivities[i]*lapZ[i]/(dz*dz)
+
+            # Boundaries!
+            rate[i,-1,:] += self.permeabilities[i]*wallConcentrationTuple[i]/self.radius
+            rate[i,:,-1] += 2 * self.diffusivities[i] * (concentrations[i, :,-2] - concentrations[i, :,-1] ) / (dz*dz)
+            rate[i,0,:] += 2 * self.diffusivities[i] * (concentrations[i, 1, :] - concentrations[i, 0, :] ) / (dr*dr)
+            rate[i,:,0] += 2 * self.diffusivities[i] * (concentrations[i, :, 1] - concentrations[i, :, 0] ) / (dz*dz)
+
+        rates = np.stack((tryp_rate, htp_rate, ser_rate))
 
         return rates.reshape(-1)
