@@ -193,9 +193,13 @@ class LaminarFlow:
 
                     assert len(delZArrays[j][:,0]) == len(velocityProf[1:-1])
                     # print(delZArrays[j])
+<<<<<<< HEAD
                     convection[k,:] = velocityProf[k+1]*delZArrays[j][k,:]
+=======
+                    convection[k,:] = velocityProf[k]*delZArrays[j][k,:]
+>>>>>>> 8d7229a790fb1d1d4f7700417f34e6dd6857b9a2
                 diffusion = self.diffusivities[j]*(lapZArrays[j] + lapRArrays[j])
-                Z[i+1,1:-1,1:-1] = Z[i,1:-1,1:-1] + (diffusion - convection + rxnList[j])*self.dt #
+                Z[i+1,1:-1,1:-1] = Z[i,1:-1,1:-1] - ( convection )*self.dt #rxnList[j]
 
 
 
