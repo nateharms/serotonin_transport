@@ -70,7 +70,7 @@ class LaminarFlow:
 
 
         self.serotoninUptake = [0]
-        self.results, info_dict = odeint(self.getConcentration, initialConcentrations, self.times, full_output = True)
+        self.results = odeint(self.getConcentration, initialConcentrations, self.times)
 
 
     def velocityProfile(self):
@@ -92,7 +92,7 @@ class LaminarFlow:
         serConcentration = concentrations[2]
 
         concentrationList = [trypConcentration, htpConcentration, serConcentration]
-        print(concentrationsVector)
+        # print(concentrationsVector)
 
         lapZ = np.diff(concentrations, n = 2, axis = 1)
         lapR = np.diff(concentrations, n = 2, axis = 2)
@@ -123,7 +123,8 @@ class LaminarFlow:
             # Boundaries!
             rate[-1,:] += self.permeabilities[i]*wallConcentrationTuple[i]/self.radius
             if i == 2:
-                self.serotoninUptake.append(self.serotoninUptake[-1] + np.sum(2*self.timestep*np.pi*dz*self.radius*rate[-1,:])) #360 is based off of 10s / 3600 in time[]
+                #i dont know how to maket his better...
+                self.serotoninUptake.append(self.serotoninUptake[-1] + np.sum(2*self.timestep*np.pi*dz*self.radius*rate[-1,:]))
             rate[:,-1] += 2 * self.diffusivities[i] * (concentrations[i, :,-2] - concentrations[i, :,-1] ) / (dz*dz)
             rate[0,:] += 2 * self.diffusivities[i] * (concentrations[i, 1, :] - concentrations[i, 0, :] ) / (dr*dr)
             rate[:,0] += 2 * self.diffusivities[i] * (concentrations[i, :, 1] - concentrations[i, :, 0] ) / (dz*dz)
