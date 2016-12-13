@@ -1,6 +1,7 @@
 import numpy as np
 from reactionKinetics import multistep
 from scipy.integrate import odeint
+from __future__ import division
 
 from time import sleep
 
@@ -60,7 +61,7 @@ class LaminarFlow:
         self.permeabilities = (self.trypWallPerm,self.htpWallPerm,self.serWallPerm)
         self.diffusivities = (self.trypDiffusivity, self.htpDiffusivity, self.serDiffusivity)
 
-        Concentrations = np.zeros((3, self.rings, self.sections))
+        Concentrations = np.zeros((4, self.rings, self.sections))
         for i, J in enumerate([trypConditions, htpConditions, serConditions]):
             Concentrations[i, :, 0] = J.Concentration
         initialConcentrations = Concentrations.reshape(-1)
@@ -86,10 +87,14 @@ class LaminarFlow:
         dz = self.length/(sections-1)
         dr = self.radius/(rings-1)
 
-        concentrations = concentrationsVector.reshape((3,rings,sections))
+        concentrations = concentrationsVector.reshape((4,rings,sections))
         trypConcentration = concentrations[0]
         htpConcentration = concentrations[1]
         serConcentration = concentrations[2]
+
+
+        #This is so I can track the rate of uptake and let odeint calculate the flux
+        uptakeRate = np.zeros_like(concentrations[3])
 
         concentrationList = [trypConcentration, htpConcentration, serConcentration]
         # print(concentrationsVector)
@@ -121,10 +126,10 @@ class LaminarFlow:
             rate[:,1:-1] += self.diffusivities[i]*lapR[i]/(dr*dr)
 
             # Boundaries!
-            rate[-1,:] += self.permeabilities[i]*wallConcentrationTuple[i]/self.radius
+            rate[-1,:] += uptakeRate[-1,:] = self.permeabilities[i]*wallConcentrationTuple[i]/self.radius
             if i == 2:
                 #i dont know how to maket his better...
-                self.serotoninUptake.append(self.serotoninUptake[-1] + np.sum(2*self.timestep*np.pi*dz*self.radius*rate[-1,:]))
+                self.serotoninUptakeRate.append(np.sum(2*self.timestep*np.pi*dz*self.radius*rate[-1,:]))
             rate[:,-1] += 2 * self.diffusivities[i] * (concentrations[i, :,-2] - concentrations[i, :,-1] ) / (dz*dz)
             rate[0,:] += 2 * self.diffusivities[i] * (concentrations[i, 1, :] - concentrations[i, 0, :] ) / (dr*dr)
             rate[:,0] += 2 * self.diffusivities[i] * (concentrations[i, :, 1] - concentrations[i, :, 0] ) / (dz*dz)
