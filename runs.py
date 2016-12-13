@@ -51,13 +51,17 @@ Model = new.LaminarFlow(length, radius, max_velocity, trypCondition, htpConditio
 
 results = Model.results.reshape(-1,3,rings,sections)
 
-print(results.shape)
+np.save('results.npy', results)
+
+
+# print(results.shape)
 
 serotonin = results[:,2,:,:]
 tryptophan = results[:,0,:,:]
 htp = results[:,1,:,:]
 
 serotoninUptake = np.array(Model.serotoninUptake)
+np.save('serotoninUptake', serotoninUptake)
 plt.plot(serotoninUptake)
 plt.savefig('serotoninUptake.png', bbox_inches='tight')
 
@@ -88,4 +92,3 @@ def animate(i):
 anim = animation.FuncAnimation(fig, animate, frames=frames, repeat_delay=2000, repeat=True)
 anim
 plt.savefig('dme_paper.png', bbox_inches='tight')
-plt.show()
